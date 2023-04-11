@@ -17,7 +17,7 @@ class LS3DCPreprocessing(BasePreprocessing):
             save_dir: str = "../../data/processed/ls3dc",
             modes: tuple = ("train", "validation"),
             n_jobs: int = -1,
-            min_points: int = 1000
+            min_points: int = 10000
     ):
         super().__init__(data_dir, save_dir, modes, n_jobs)
 
@@ -38,7 +38,6 @@ class LS3DCPreprocessing(BasePreprocessing):
         }
 
         self.color_map = [
-            [0, 255, 0],   # None
             [255, 0, 0],   # Plane
             [0, 0, 255]]   # Cylinder
    
