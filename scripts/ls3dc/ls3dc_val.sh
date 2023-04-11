@@ -14,7 +14,7 @@ data=primitives \
 data/datasets=ls3dc \
 general.num_targets=2 \
 data.num_labels=2 \
-data.voxel_size=0.333 \
+data.voxel_size=0.02 \
 data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
@@ -23,7 +23,7 @@ model.num_queries=${CURR_QUERY} \
 general.on_crops=true \
 model.config.backbone._target_=models.Res16UNet18B \
 data.crop_length=${CURR_SIZE} \
-general.eval_inner_core=12.0
+general.eval_inner_core=3.0
 
 # TEST
 python main_instance_segmentation.py \
@@ -33,7 +33,7 @@ data/datasets=ls3dc \
 data=primitives \
 general.num_targets=2 \
 data.num_labels=2 \
-data.voxel_size=0.333 \
+data.voxel_size=0.02 \
 data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
@@ -44,7 +44,7 @@ model.config.backbone._target_=models.Res16UNet18B \
 general.train_mode=false \
 general.checkpoint="checkpoints/ls3dc/ls3dc_val.ckpt" \
 data.crop_length=${CURR_SIZE} \
-general.eval_inner_core=12.0 \
+general.eval_inner_core=3.0 \
 general.topk_per_image=${CURR_TOPK} \
 general.use_dbscan=true \
 general.dbscan_eps=${CURR_DBSCAN}

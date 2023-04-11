@@ -256,7 +256,7 @@ class SemanticSegmentationDataset(Dataset):
                                     'data': block
                                 })
                             else:
-                                assert False
+                                pass
                     else:
                         conds_inner, blocks_outer = self.splitPointCloud(self._data[i]['data'],
                                                                          size=self.crop_length,
@@ -265,7 +265,6 @@ class SemanticSegmentationDataset(Dataset):
                         for block_id in range(len(conds_inner)):
                             cond_inner = conds_inner[block_id]
                             block_outer = blocks_outer[block_id]
-                            print(cond_inner.sum())
                             if cond_inner.sum() > 10000:
                                 new_data.append({
                                     'instance_gt_filepath': self._data[i]['instance_gt_filepath'][block_id] \
@@ -276,7 +275,7 @@ class SemanticSegmentationDataset(Dataset):
                                     'cond_inner': cond_inner
                                 })
                             else:
-                                assert False
+                                pass
 
             if self.on_crops:
                 self._data = new_data
