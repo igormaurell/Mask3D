@@ -6,6 +6,7 @@ from natsort import natsorted
 from loguru import logger
 import pandas as pd
 import h5py
+import pickle
 
 from datasets.preprocessing.base_preprocessing import BasePreprocessing
 
@@ -15,9 +16,12 @@ class LS3DCPreprocessing(BasePreprocessing):
             data_dir: str = "../../data/raw/ls3dc",
             save_dir: str = "../../data/processed/ls3dc",
             modes: tuple = ("train", "validation"),
-            n_jobs: int = -1
+            n_jobs: int = -1,
+            min_points: int = 1000
     ):
         super().__init__(data_dir, save_dir, modes, n_jobs)
+
+        self.min_points = min_points
 
         MODE_CSV_MAP = {
             'train': 'train',
@@ -43,8 +47,8 @@ class LS3DCPreprocessing(BasePreprocessing):
         self.create_label_database()
 
         for mode in self.modes:
-            filenames = pd.read_csv(self.data_dir / '{}_models.csv'.format(MODE_CSV_MAP[mode])).values
-            filepaths = [self.data_dir / f for f in filenames]
+            filenames = list(pd.read_csv(self.data_dir / '{}_models.csv'.format(MODE_CSV_MAP[mode])))
+            filepaths = [str(self.data_dir / f) for f in filenames]
             self.files[mode] = natsorted(filepaths)
 
     def create_label_database(self):
@@ -102,15 +106,16 @@ class LS3DCPreprocessing(BasePreprocessing):
 
             semantic_label = np.array([self.class_map[features_data[inst]['type']] if features_data[inst]['type'] in self.class_map.keys() else -1 for inst in instance_label])
 
+            instance_label = instance_label[..., None]
+            semantic_label = semantic_label[..., None]
+
         rgb = np.zeros(xyz.shape, dtype=xyz.dtype)
         points = np.hstack((xyz, rgb, semantic_label, instance_label))
 
         filebase["raw_segmentation_filepath"] = ""
 
         # add segment id as additional feature (DUMMY)
-        points = np.hstack((points, normals, np.ones(points.shape[0])[..., None]))  # segments
-
-        print(points.shape)
+        points = np.hstack((points, normals, np.ones(points.shape[0])[..., None]))  # segment
 
         points = points[:, [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 6, 7]]  # move segments after RGB
 
@@ -129,12 +134,12 @@ class LS3DCPreprocessing(BasePreprocessing):
         filebase["filepath"] = str(processed_filepath)
 
         if mode == "validation":
-            blocks = self.splitPointCloud(points)
+            blocks = self.splitPointCloud(points, size=12, stride=12)
 
             filebase["instance_gt_filepath"] = []
             filebase["filepath_crop"] = []
             for block_id, block in enumerate(blocks):
-                if len(block) > 10000:
+                if len(block) > self.min_points:
                     if mode == "validation":
                         new_instance_ids = np.unique(block[:, -1], return_inverse=True)[1]
 
@@ -157,8 +162,7 @@ class LS3DCPreprocessing(BasePreprocessing):
                     np.save(processed_filepath, block.astype(np.float32))
                     filebase["filepath_crop"].append(str(processed_filepath))
                 else:
-                    print("block was smaller than 1000 points")
-                    assert False
+                    print("block was smaller than {} points".format(self.min_points))
 
         filebase["color_mean"] = [
             float((points[:, 3] / 255).mean()),
