@@ -5,65 +5,46 @@ from fire import Fire
 from natsort import natsorted
 from loguru import logger
 import pandas as pd
+import h5py
 
 from datasets.preprocessing.base_preprocessing import BasePreprocessing
 
-class STPLS3DPreprocessing(BasePreprocessing):
+class LS3DCPreprocessing(BasePreprocessing):
     def __init__(
             self,
-            data_dir: str = "../../data/raw/stpls3d",
-            save_dir: str = "../../data/processed/stpls3d",
-            modes: tuple = ("train", "validation", "test"),
+            data_dir: str = "../../data/raw/ls3dc",
+            save_dir: str = "../../data/processed/ls3dc",
+            modes: tuple = ("train", "validation"),
             n_jobs: int = -1
     ):
         super().__init__(data_dir, save_dir, modes, n_jobs)
 
-        # https://github.com/meidachen/STPLS3D/blob/main/HAIS/STPLS3DInstanceSegmentationChallenge_Codalab_Evaluate.py#L31
-        CLASS_LABELS = ['Build', 'LowVeg', 'MediumVeg', 'HighVeg', 'Vehicle', 'Truck', 'Aircraft', 'MilitaryVeh',
-                        'Bike', 'Motorcycle', 'LightPole', 'StreetSign', 'Clutter', 'Fence']
-        VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+        MODE_CSV_MAP = {
+            'train': 'train',
+            'validation': 'test',
+            'test': ''
+        }
+
+        CLASS_LABELS = ['Plane', 'Cylinder']
+        VALID_CLASS_IDS = np.array([1, 2])
 
         self.class_map = {
-            'Ground': 0,
-            'Build': 1,
-            'LowVeg': 2,
-            'MediumVeg': 3,
-            'HighVeg': 4,
-            'Vehicle': 5,
-            'Truck': 6,
-            'Aircraft': 7,
-            'MilitaryVeh': 8,
-            'Bike': 9,
-            'Motorcycle': 10,
-            'LightPole': 11,
-            'StreetSign': 12,
-            'Clutter': 13,
-            'Fence': 14
+            'None': 0,
+            'Plane': 1,
+            'Cylinder': 2
         }
 
         self.color_map = [
-            [0, 255, 0],     # Ground
-            [0, 0, 255],     # Build
-            [0, 255, 255],   # LowVeg
-            [255, 255, 0],   # MediumVeg
-            [255, 0, 255],   # HiVeg
-            [100, 100, 255], # Vehicle
-            [200, 200, 100], # Truck
-            [170, 120, 200], # Aircraft
-            [255, 0, 0],     # MilitaryVec
-            [200, 100, 100], # Bike
-            [10, 200, 100],  # Motorcycle
-            [200, 200, 200], # LightPole
-            [50, 50, 50],    # StreetSign
-            [60, 130, 60],   # Clutter
-            [130, 30, 60]]   # Fence
+            [0, 255, 0],   # None
+            [255, 0, 0],   # Plane
+            [0, 0, 255]]   # Cylinder
+   
 
         self.create_label_database()
 
         for mode in self.modes:
-            filepaths = []
-            for scene_path in [f.path for f in os.scandir(self.data_dir / mode)]:
-                filepaths.append(scene_path)
+            filenames = pd.read_csv(self.data_dir / '{}_models.csv'.format(MODE_CSV_MAP[mode])).values
+            filepaths = [self.data_dir / f for f in filenames]
             self.files[mode] = natsorted(filepaths)
 
     def create_label_database(self):
@@ -97,28 +78,39 @@ class STPLS3DPreprocessing(BasePreprocessing):
             "file_len": -1,
         }
 
-        points = pd.read_csv(filepath, header=None).values
-        
-        print(points[0])
+        with h5py.File(filepath, 'r') as h5_file:
+            xyz = h5_file['noisy_points'][()] if 'noisy_points' in h5_file.keys() else None
+            normals = h5_file['gt_normals'][()] if 'gt_normals' in h5_file.keys() else None
+            instance_label = h5_file['gt_labels'][()] if 'gt_labels' in h5_file.keys() else None
+
+            found_soup_ids = []
+            soup_id_to_key = {}
+            soup_prog = re.compile('(.*)_soup_([0-9]+)$')
+            for key in list(h5_file.keys()):
+                m = soup_prog.match(key)
+                if m is not None:
+                    soup_id = int(m.group(2))
+                    found_soup_ids.append(soup_id)
+                    soup_id_to_key[soup_id] = key
+
+            features_data = []            
+            found_soup_ids.sort()
+            for i in range(len(found_soup_ids)):
+                g = h5_file[soup_id_to_key[i]]
+                meta = pickle.loads(g.attrs['meta'])
+                features_data.append(meta)
+
+            semantic_label = np.array([self.class_map[features_data[inst]['type']] if features_data[inst]['type'] in self.class_map.keys() else -1 for inst in instance_label])
+
+        rgb = np.zeros(xyz.shape, dtype=xyz.dtype)
+        points = np.hstack((xyz, rgb, semantic_label, instance_label))
 
         filebase["raw_segmentation_filepath"] = ""
 
         # add segment id as additional feature (DUMMY)
-        if mode in ["train", "validation"]:
-            points = np.hstack((points,
-                                np.ones(points.shape[0])[..., None],   # normal 1
-                                np.ones(points.shape[0])[..., None],   # normal 2
-                                np.ones(points.shape[0])[..., None],   # normal 3
-                                np.ones(points.shape[0])[..., None]))  # segments
-        else:
-            # we need to add dummies for semantics and instances
-            points = np.hstack((points,
-                                np.ones(points.shape[0])[..., None],   # semantic class
-                                np.ones(points.shape[0])[..., None],   # instance id
-                                np.ones(points.shape[0])[..., None],   # normal 1
-                                np.ones(points.shape[0])[..., None],   # normal 2
-                                np.ones(points.shape[0])[..., None],   # normal 3
-                                np.ones(points.shape[0])[..., None]))  # segments
+        points = np.hstack((points, normals, np.ones(points.shape[0])[..., None]))  # segments
+
+        print(points.shape)
 
         points = points[:, [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 6, 7]]  # move segments after RGB
 
@@ -126,11 +118,6 @@ class STPLS3DPreprocessing(BasePreprocessing):
         points[:, :3] = points[:, :3] - points[:, :3].min(0)
 
         points = points.astype(np.float32)
-
-        if mode == "test":
-            points = points[:, :-2]
-        else:
-            points[points[:, -1] == -100., -1] = -1  # -1 indicates "no instance"
 
         file_len = len(points)
         filebase["file_len"] = file_len
@@ -141,7 +128,7 @@ class STPLS3DPreprocessing(BasePreprocessing):
         np.save(processed_filepath, points.astype(np.float32))
         filebase["filepath"] = str(processed_filepath)
 
-        if mode in ["validation", "test"]:
+        if mode == "validation":
             blocks = self.splitPointCloud(points)
 
             filebase["instance_gt_filepath"] = []
@@ -186,7 +173,7 @@ class STPLS3DPreprocessing(BasePreprocessing):
         return filebase
 
     def compute_color_mean_std(
-            self, train_database_path: str = "./data/processed/stpls3d/train_database.yaml"
+            self, train_database_path: str = "./data/processed/ls3dc/train_database.yaml"
     ):
         train_database = self._load_yaml(train_database_path)
         color_mean, color_std = [], []
@@ -226,4 +213,4 @@ class STPLS3DPreprocessing(BasePreprocessing):
 
 
 if __name__ == "__main__":
-    Fire(STPLS3DPreprocessing)
+    Fire(LS3DCPreprocessing)
