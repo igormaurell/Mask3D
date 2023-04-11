@@ -8,7 +8,7 @@ CURR_SIZE=54
 
 # TRAIN
 python main_instance_segmentation.py \
-general.experiment_name="validation" \
+general.experiment_name="validation_ls3dc" \
 general.project_name="ls3dc" \
 data=primitives \
 data/datasets=ls3dc \
@@ -27,7 +27,7 @@ general.eval_inner_core=12.0
 
 # TEST
 python main_instance_segmentation.py \
-general.experiment_name="validation_query_${CURR_QUERY}_topk_${CURR_TOPK}_dbscan_${CURR_DBSCAN}_size_${CURR_SIZE}" \
+general.experiment_name="validation_ls3dc_query_${CURR_QUERY}_topk_${CURR_TOPK}_dbscan_${CURR_DBSCAN}_size_${CURR_SIZE}" \
 general.project_name="ls3dc_eval" \
 data/datasets=ls3dc \
 data=primitives \

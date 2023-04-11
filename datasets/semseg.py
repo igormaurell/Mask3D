@@ -120,6 +120,12 @@ class SemanticSegmentationDataset(Dataset):
             11: [200, 200, 200],    # board
             12: [50, 50, 50]      # clutter
             }
+        elif self.dataset_name == "ls3dc":
+            self.color_map = {
+            0:   [255, 0, 0],
+            1:   [0, 0, 255],
+            255: [0, 255, 0]
+            }
         else:
             assert False, "dataset not known"
 
@@ -259,7 +265,7 @@ class SemanticSegmentationDataset(Dataset):
                         for block_id in range(len(conds_inner)):
                             cond_inner = conds_inner[block_id]
                             block_outer = blocks_outer[block_id]
-
+                            print(cond_inner.sum())
                             if cond_inner.sum() > 10000:
                                 new_data.append({
                                     'instance_gt_filepath': self._data[i]['instance_gt_filepath'][block_id] \
