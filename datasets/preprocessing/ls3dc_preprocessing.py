@@ -33,9 +33,8 @@ class LS3DCPreprocessing(BasePreprocessing):
         VALID_CLASS_IDS = np.array([1, 2])
 
         self.class_map = {
-            'None': 0,
-            'Plane': 1,
-            'Cylinder': 2
+            'Plane': 0,
+            'Cylinder': 1
         }
 
         self.color_map = [
@@ -104,7 +103,7 @@ class LS3DCPreprocessing(BasePreprocessing):
                 meta = pickle.loads(g.attrs['meta'])
                 features_data.append(meta)
 
-            semantic_label = np.array([self.class_map[features_data[inst]['type']] if features_data[inst]['type'] in self.class_map.keys() else -1 for inst in instance_label])
+            semantic_label = np.array([ 255 if inst == -1 or features_data[inst]['type'] not in self.class_map.keys() else self.class_map[features_data[inst]['type']] for inst in instance_label])
 
             instance_label = instance_label[..., None]
             semantic_label = semantic_label[..., None]
