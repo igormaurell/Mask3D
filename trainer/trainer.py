@@ -340,15 +340,21 @@ class InstanceSegmentation(pl.LightningModule):
 
         if raw_coordinates.shape[0] == 0:
             return 0.
+        
+        #print(file_names)
+        #print('data:', len(data.coordinates))
 
         data = ME.SparseTensor(coordinates=data.coordinates, features=data.features, device=self.device)
 
 
         try:
+            
             output = self.forward(data,
                                   point2segment=[target[i]['point2segment'] for i in range(len(target))],
                                   raw_coordinates=raw_coordinates,
                                   is_eval=True)
+            #print('output:', output.keys())
+            
         except RuntimeError as run_err:
             print(run_err)
             if 'only a single point gives nans in cross-attention' == run_err.args[0]:

@@ -263,6 +263,7 @@ def make_pred_info(pred: dict):
     return pred_info
 
 def assign_instances_for_scan(pred: dict, gt_file: str):
+    #print(pred['pred_masks'].shape)
     pred_info = make_pred_info(pred)
     try:
         gt_ids = util_3d.load_ids(gt_file)
@@ -291,7 +292,7 @@ def assign_instances_for_scan(pred: dict, gt_file: str):
         label_name = ID_TO_LABEL[label_id]
         # read the mask
         pred_mask = pred_info[uuid]['mask']
-        assert(len(pred_mask) == len(gt_ids))
+        assert(len(pred_mask) == len(gt_ids)), '{} != {}'.format(len(pred_mask), len(gt_ids))
         # convert to binary
         pred_mask = np.not_equal(pred_mask, 0)
         num = np.count_nonzero(pred_mask)

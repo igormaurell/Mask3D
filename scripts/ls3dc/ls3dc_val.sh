@@ -4,7 +4,7 @@ export OMP_NUM_THREADS=3
 CURR_DBSCAN=14.0
 CURR_TOPK=750
 CURR_QUERY=160
-CURR_SIZE=8
+CURR_SIZE=6
 
 # TRAIN
 python main_instance_segmentation.py \
