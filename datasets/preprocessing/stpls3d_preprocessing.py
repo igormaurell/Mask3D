@@ -99,8 +99,6 @@ class STPLS3DPreprocessing(BasePreprocessing):
 
         points = pd.read_csv(filepath, header=None).values
         
-        print(points[0])
-
         filebase["raw_segmentation_filepath"] = ""
 
         # add segment id as additional feature (DUMMY)
@@ -119,6 +117,8 @@ class STPLS3DPreprocessing(BasePreprocessing):
                                 np.ones(points.shape[0])[..., None],   # normal 2
                                 np.ones(points.shape[0])[..., None],   # normal 3
                                 np.ones(points.shape[0])[..., None]))  # segments
+            
+        #print(filepath, np.unique(points[:, 7].astype(np.int32)))
 
         points = points[:, [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 6, 7]]  # move segments after RGB
 
@@ -149,6 +149,7 @@ class STPLS3DPreprocessing(BasePreprocessing):
             for block_id, block in enumerate(blocks):
                 if len(block) > 10000:
                     if mode == "validation":
+                        print(np.unique(block[:, -1]).astype(np.int32))
                         new_instance_ids = np.unique(block[:, -1], return_inverse=True)[1]
 
                         assert new_instance_ids.shape[0] == block.shape[0]

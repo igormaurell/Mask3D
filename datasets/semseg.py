@@ -122,9 +122,9 @@ class SemanticSegmentationDataset(Dataset):
             }
         elif self.dataset_name == "ls3dc":
             self.color_map = {
-            0:   [255, 0, 0],
-            1:   [0, 0, 255],
-            255: [0, 255, 0]
+            0: [255, 255, 255],
+            1: [255, 0, 0],
+            2: [0, 0, 255]
             }
         else:
             assert False, "dataset not known"
@@ -239,6 +239,8 @@ class SemanticSegmentationDataset(Dataset):
             self.normalize_color = A.Normalize(mean=color_mean, std=color_std)
 
         self.cache_data = cache_data
+
+        print(self.mode, self.on_crops, self.cache_data)
         # new_data = []
         if self.cache_data:
             new_data = []
@@ -279,6 +281,9 @@ class SemanticSegmentationDataset(Dataset):
 
             if self.on_crops:
                 self._data = new_data
+            
+            print(self._data[0].keys())
+            
                 #new_data.append(np.load(self.data[i]["filepath"].replace("../../", "")))
             #self._data = new_data
 
@@ -334,17 +339,19 @@ class SemanticSegmentationDataset(Dataset):
             return self.reps_per_epoch*len(self.data)
 
     def __getitem__(self, idx: int):
+        #print('----------------------------', idx, '-', self.mode, '----------------------------')
         idx = idx % len(self.data)
         if self.is_tta:
             idx = idx % len(self.data)
 
         if self.cache_data:
             points = self.data[idx]['data']
+            #print('Input Points:', points.shape, np.unique(points[:, -2]))
         else:
             assert not self.on_crops, "you need caching if on crops"
             points = np.load(self.data[idx]["filepath"].replace("../../", ""))
 
-        if "train" in self.mode and self.dataset_name in ["s3dis", "stpls3d"]:
+        if "train" in self.mode and self.dataset_name in ["s3dis", "stpls3d", "ls3dc"]:
             inds = self.random_cuboid(points)
             points = points[inds]
 
@@ -365,10 +372,11 @@ class SemanticSegmentationDataset(Dataset):
 
         # volume and image augmentations for train
         if "train" in self.mode or self.is_tta:
+            #not used
             if self.cropping:
                 new_idx = self.random_cuboid(coordinates, labels[:,1],
                                              self._remap_from_zero(labels[:, 0].copy()))
-
+                
                 coordinates = coordinates[new_idx]
                 color = color[new_idx]
                 labels = labels[new_idx]
@@ -395,6 +403,8 @@ class SemanticSegmentationDataset(Dataset):
 
             if self.flip_in_center:
                 coordinates = flip_in_center(coordinates)
+
+            #print('size here:', coordinates.shape)
 
             for i in (0, 1):
                 if random() < 0.5:
@@ -521,6 +531,7 @@ class SemanticSegmentationDataset(Dataset):
                 color[:] = 255
 
         # normalize color information
+        #print(color.shape)
         pseudo_image = color.astype(np.uint8)[np.newaxis, :, :]
         color = np.squeeze(self.normalize_color(image=pseudo_image)["image"])
 
@@ -550,11 +561,13 @@ class SemanticSegmentationDataset(Dataset):
         if self.dataset_name == "s3dis":
             return coordinates, features, labels, self.data[idx]['area'] + "_" + self.data[idx]['scene'],\
                    raw_color, raw_normals, raw_coordinates, idx
-        if self.dataset_name == "stpls3d":
+        if self.dataset_name == "stpls3d" or self.dataset_name == "ls3dc":
             if labels.shape[1] != 1: # only segments --> test set!
                 if np.unique(labels[:, -2]).shape[0] < 2:
                     print("NO INSTANCES")
                     return self.__getitem__(0)
+            #print(coordinates.shape, features.shape, labels.shape, raw_color.shape, raw_normals.shape, raw_coordinates.shape)
+            #print(labels[0])
             return coordinates, features, labels, self.data[idx]['scene'], \
                    raw_color, raw_normals, raw_coordinates, idx
         else:

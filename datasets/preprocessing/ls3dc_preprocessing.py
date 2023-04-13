@@ -29,15 +29,17 @@ class LS3DCPreprocessing(BasePreprocessing):
             'test': ''
         }
 
-        CLASS_LABELS = ['Plane', 'Cylinder']
-        VALID_CLASS_IDS = np.array([1, 2])
+        #CLASS_LABELS = ['None', 'Plane', 'Cylinder']
+        #VALID_CLASS_IDS = np.array([1, 2])
 
         self.class_map = {
-            'Plane': 0,
-            'Cylinder': 1
+            'none': 0,
+            'plane': 1,
+            'cylinder': 2
         }
 
         self.color_map = [
+            [255, 255, 255], #None
             [255, 0, 0],   # Plane
             [0, 0, 255]]   # Cylinder
    
@@ -102,12 +104,12 @@ class LS3DCPreprocessing(BasePreprocessing):
                 meta = pickle.loads(g.attrs['meta'])
                 features_data.append(meta)
 
-            semantic_label = np.array([ 255 if inst == -1 or features_data[inst]['type'] not in self.class_map.keys() else self.class_map[features_data[inst]['type']] for inst in instance_label])
+            semantic_label = np.array([ self.class_map['none'] if inst == -1 or features_data[inst]['type'].lower() not in self.class_map.keys() else self.class_map[features_data[inst]['type']] for inst in instance_label])
 
             instance_label = instance_label[..., None]
             semantic_label = semantic_label[..., None]
 
-        rgb = np.zeros(xyz.shape, dtype=xyz.dtype)
+        rgb = np.ones(xyz.shape, dtype=xyz.dtype)
         points = np.hstack((xyz, rgb, semantic_label, instance_label))
 
         filebase["raw_segmentation_filepath"] = ""
@@ -116,8 +118,13 @@ class LS3DCPreprocessing(BasePreprocessing):
         points = np.hstack((points, normals, np.ones(points.shape[0])[..., None]))  # segment
 
         points = points[:, [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 6, 7]]  # move segments after RGB
- 
+
+        points[:, :3] = points[:, :3] - points[:, :3].min(0)
+
         points = points.astype(np.float32)
+
+        if mode == "test":
+            points = points[:, :-2]
 
         file_len = len(points)
         filebase["file_len"] = file_len
@@ -127,6 +134,38 @@ class LS3DCPreprocessing(BasePreprocessing):
             processed_filepath.parent.mkdir(parents=True, exist_ok=True)
         np.save(processed_filepath, points.astype(np.float32))
         filebase["filepath"] = str(processed_filepath)
+
+        if mode in ["validation", "test"]:
+            blocks = self.splitPointCloud(points)
+
+            filebase["instance_gt_filepath"] = []
+            filebase["filepath_crop"] = []
+            for block_id, block in enumerate(blocks):
+                if len(block) > 10000:
+                    if mode == "validation":
+                        new_instance_ids = np.unique(block[:, -1], return_inverse=True)[1]
+
+                        assert new_instance_ids.shape[0] == block.shape[0]
+                        # == 0 means -1 == no instance
+                        # new_instance_ids[new_instance_ids == 0]
+                        assert new_instance_ids.max() < 1000, "we cannot encode when there are more than 999 instances in a block"
+
+                        gt_data = (block[:, -2]) * 1000 + new_instance_ids
+
+                        processed_gt_filepath = self.save_dir / "instance_gt" / mode / f"{filebase['scene'].replace('.txt', '')}_{block_id}.txt"
+                        if not processed_gt_filepath.parent.exists():
+                            processed_gt_filepath.parent.mkdir(parents=True, exist_ok=True)
+                        np.savetxt(processed_gt_filepath, gt_data.astype(np.int32), fmt="%d")
+                        filebase["instance_gt_filepath"].append(str(processed_gt_filepath))
+
+                    processed_filepath = self.save_dir / mode / f"{filebase['scene'].replace('.txt', '')}_{block_id}.npy"
+                    if not processed_filepath.parent.exists():
+                        processed_filepath.parent.mkdir(parents=True, exist_ok=True)
+                    np.save(processed_filepath, block.astype(np.float32))
+                    filebase["filepath_crop"].append(str(processed_filepath))
+                else:
+                    print("block was smaller than 1000 points")
+                    assert False
 
         filebase["color_mean"] = [
             float((points[:, 3] / 255).mean()),
@@ -150,12 +189,28 @@ class LS3DCPreprocessing(BasePreprocessing):
             color_mean.append(sample["color_mean"])
 
         color_mean = np.array(color_mean).mean(axis=0)
-        color_std = np.sqrt(np.array(color_std).mean(axis=0) - color_mean ** 2)
+        color_var = np.array(color_std).mean(axis=0) - color_mean ** 2
+        color_std = np.sqrt(np.maximum(0, color_var))
         feats_mean_std = {
             "mean": [float(each) for each in color_mean],
             "std": [float(each) for each in color_std],
         }
         self._save_yaml(self.save_dir / "color_mean_std.yaml", feats_mean_std)
+
+    def splitPointCloud(self, cloud, size=8.0, stride=8):
+        limitMax = np.amax(cloud[:, 0:3], axis=0)
+        width = int(np.ceil((limitMax[0] - size) / stride)) + 1
+        depth = int(np.ceil((limitMax[1] - size) / stride)) + 1
+        cells = [(x * stride, y * stride) for x in range(width) for y in range(depth)]
+        blocks = []
+        for (x, y) in cells:
+            xcond = (cloud[:, 0] <= x + size) & (cloud[:, 0] >= x)
+            ycond = (cloud[:, 1] <= y + size) & (cloud[:, 1] >= y)
+            cond = xcond & ycond
+            block = cloud[cond, :]
+            blocks.append(block)
+        return blocks
+
 
     @logger.catch
     def fix_bugs_in_labels(self):

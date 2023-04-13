@@ -383,6 +383,23 @@ def evaluate(preds: dict, gt_path: str, output_file: str, dataset: str = "scanne
     global LABEL_TO_ID
     global opt
 
+    if dataset == "ls3dc":
+        # global CLASS_LABELS
+        # global VALID_CLASS_IDS
+        # global ID_TO_LABEL
+        # global LABEL_TO_ID
+
+        opt['min_region_sizes'] = np.array([4])
+
+        CLASS_LABELS = ['plane', 'cylinder']
+        VALID_CLASS_IDS = np.array([1, 2])
+
+        ID_TO_LABEL = {}
+        LABEL_TO_ID = {}
+        for i in range(len(VALID_CLASS_IDS)):
+            LABEL_TO_ID[CLASS_LABELS[i]] = VALID_CLASS_IDS[i]
+            ID_TO_LABEL[VALID_CLASS_IDS[i]] = CLASS_LABELS[i]
+
     if dataset == "stpls3d":
         # global CLASS_LABELS
         # global VALID_CLASS_IDS

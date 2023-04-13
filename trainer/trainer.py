@@ -673,6 +673,18 @@ class InstanceSegmentation(pl.LightningModule):
                         file_name,
                         self.decoder_id
                     )
+                if self.validation_dataset.dataset_name == "ls3dc":
+                    scan_id, _, _, crop_id = file_names[bid].split("_")
+                    crop_id = int(crop_id.replace(".txt", ""))
+                    file_name = f"{scan_id}_{crop_id}"
+
+                    self.export(
+                        self.preds[file_names[bid]]['pred_masks'],
+                        self.preds[file_names[bid]]['pred_scores'],
+                        self.preds[file_names[bid]]['pred_classes'],
+                        file_name,
+                        self.decoder_id
+                    )
                 else:
                     self.export(
                         self.preds[file_names[bid]]['pred_masks'],
@@ -708,7 +720,7 @@ class InstanceSegmentation(pl.LightningModule):
         root_path = f"eval_output"
         base_path = f"{root_path}/instance_evaluation_{self.config.general.experiment_name}_{self.current_epoch}"
 
-        if self.validation_dataset.dataset_name in ["scannet", "stpls3d", "scannet200"]:
+        if self.validation_dataset.dataset_name in ["scannet", "stpls3d", "scannet200", "ls3dc"]:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/{self.validation_dataset.mode}"
         else:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/Area_{self.config.general.area}"
@@ -742,6 +754,16 @@ class InstanceSegmentation(pl.LightningModule):
                     }
 
                 evaluate(new_preds, gt_data_path, pred_path, dataset="stpls3d")
+            elif self.validation_dataset.dataset_name == "ls3dc":
+                new_preds = {}
+                for key in self.preds.keys():
+                    new_preds[key.replace(".txt", "")] = {
+                        'pred_classes': self.preds[key]['pred_classes'],
+                        'pred_masks': self.preds[key]['pred_masks'],
+                        'pred_scores': self.preds[key]['pred_scores']
+                    }
+
+                evaluate(new_preds, gt_data_path, pred_path, dataset="ls3dc")
             else:
                 evaluate(self.preds, gt_data_path, pred_path, dataset=self.validation_dataset.dataset_name)
             with open(pred_path, "r") as fin:
