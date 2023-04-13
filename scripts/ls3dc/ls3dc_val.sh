@@ -23,7 +23,7 @@ model.num_queries=${CURR_QUERY} \
 general.on_crops=true \
 model.config.backbone._target_=models.Res16UNet18B \
 data.crop_length=${CURR_SIZE} \
-general.eval_inner_core=8.0
+general.eval_inner_core=6.0
 
 # TEST
 python main_instance_segmentation.py \
