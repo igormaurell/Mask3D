@@ -208,6 +208,7 @@ class ScannetPreprocessing(BasePreprocessing):
             float(((features[:, 1] / 255) ** 2).mean()),
             float(((features[:, 2] / 255) ** 2).mean()),
         ]
+        print(filebase.keys())
         return filebase
 
     def compute_color_mean_std(

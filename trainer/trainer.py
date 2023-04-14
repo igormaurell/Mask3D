@@ -127,13 +127,13 @@ class InstanceSegmentation(pl.LightningModule):
         try:
             losses = self.criterion(output, target, mask_type=self.mask_type)
         except ValueError as val_err:
-            print(f"ValueError: {val_err}")
-            print(f"data shape: {data.shape}")
-            print(f"data feat shape:  {data.features.shape}")
-            print(f"data feat nans:   {data.features.isnan().sum()}")
-            print(f"output: {output}")
-            print(f"target: {target}")
-            print(f"filenames: {file_names}")
+            #print(f"ValueError: {val_err}")
+            #print(f"data shape: {data.shape}")
+            #print(f"data feat shape:  {data.features.shape}")
+            #print(f"data feat nans:   {data.features.isnan().sum()}")
+            #print(f"output: {output}")
+            #print(f"target: {target}")
+            #print(f"filenames: {file_names}")
             raise val_err
 
         for k in list(losses.keys()):
@@ -332,11 +332,16 @@ class InstanceSegmentation(pl.LightningModule):
 
         if len(data.coordinates) == 0:
             return 0.
+        
+        #print('-------------------------------------------------- Batch:', batch_idx)
+        #print(file_names)
 
         raw_coordinates = None
         if self.config.data.add_raw_coordinates:
             raw_coordinates = data.features[:, -3:]
             data.features = data.features[:, :-3]
+
+        
 
         if raw_coordinates.shape[0] == 0:
             return 0.
@@ -365,7 +370,6 @@ class InstanceSegmentation(pl.LightningModule):
         if self.config.data.test_mode != "test":
             if self.config.trainer.deterministic:
                 torch.use_deterministic_algorithms(False)
-
             try:
                 losses = self.criterion(output, target,
                                         mask_type=self.mask_type)
@@ -728,6 +732,7 @@ class InstanceSegmentation(pl.LightningModule):
 
         if self.validation_dataset.dataset_name in ["scannet", "stpls3d", "scannet200", "ls3dc"]:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/{self.validation_dataset.mode}"
+            #print(gt_data_path)
         else:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/Area_{self.config.general.area}"
 

@@ -240,7 +240,7 @@ class SemanticSegmentationDataset(Dataset):
 
         self.cache_data = cache_data
 
-        print(self.mode, self.on_crops, self.cache_data)
+        #print(self.mode, self.on_crops, self.cache_data)
         # new_data = []
         if self.cache_data:
             new_data = []
@@ -281,9 +281,7 @@ class SemanticSegmentationDataset(Dataset):
 
             if self.on_crops:
                 self._data = new_data
-            
-            print(self._data[0].keys())
-            
+                        
                 #new_data.append(np.load(self.data[i]["filepath"].replace("../../", "")))
             #self._data = new_data
 
@@ -351,9 +349,11 @@ class SemanticSegmentationDataset(Dataset):
             assert not self.on_crops, "you need caching if on crops"
             points = np.load(self.data[idx]["filepath"].replace("../../", ""))
 
-        if "train" in self.mode and self.dataset_name in ["s3dis", "stpls3d", "ls3dc"]:
+        if "train" in self.mode and self.dataset_name in ["s3dis", "stpls3d"]:
             inds = self.random_cuboid(points)
             points = points[inds]
+
+        #print(points.shape)
 
         coordinates, color, normals, segments, labels = (
             points[:, :3],
@@ -426,8 +426,9 @@ class SemanticSegmentationDataset(Dataset):
                 aug["normals"],
                 aug["labels"],
             )
-            pseudo_image = color.astype(np.uint8)[np.newaxis, :, :]
-            color = np.squeeze(self.image_augmentations(image=pseudo_image)["image"])
+            if self.add_colors:
+                pseudo_image = color.astype(np.uint8)[np.newaxis, :, :]
+                color = np.squeeze(self.image_augmentations(image=pseudo_image)["image"])
 
             if self.point_per_cut != 0:
                 number_of_cuts = int(len(coordinates) / self.point_per_cut)
@@ -531,9 +532,11 @@ class SemanticSegmentationDataset(Dataset):
                 color[:] = 255
 
         # normalize color information
-        #print(color.shape)
-        pseudo_image = color.astype(np.uint8)[np.newaxis, :, :]
-        color = np.squeeze(self.normalize_color(image=pseudo_image)["image"])
+        #print('color:', color)
+        if self.add_colors:
+            pseudo_image = color.astype(np.uint8)[np.newaxis, :, :]
+            color = np.squeeze(self.normalize_color(image=pseudo_image)["image"])
+        #print('color:', color)
 
         # prepare labels and map from 0 to 20(40)
         labels = labels.astype(np.int32)
@@ -557,7 +560,7 @@ class SemanticSegmentationDataset(Dataset):
         #if self.task != "semantic_segmentation":
         if self.data[idx]['raw_filepath'].split("/")[-2] in ['scene0636_00', 'scene0154_00']:
             return self.__getitem__(0)
-
+        
         if self.dataset_name == "s3dis":
             return coordinates, features, labels, self.data[idx]['area'] + "_" + self.data[idx]['scene'],\
                    raw_color, raw_normals, raw_coordinates, idx
