@@ -272,6 +272,7 @@ def assign_instances_for_scan(pred: dict, gt_file: str):
 
     # get gt instances
     gt_instances = util_3d.get_instances(gt_ids, VALID_CLASS_IDS, CLASS_LABELS, ID_TO_LABEL)
+    print(np.unique(gt_ids//1000))
     # associate
     gt2pred = deepcopy(gt_instances)
     for label in gt2pred:
@@ -602,6 +603,7 @@ def evaluate(preds: dict, gt_path: str, output_file: str, dataset: str = "scanne
         matches_key = os.path.abspath(gt_file)
         # assign gt to predictions
         gt2pred, pred2gt = assign_instances_for_scan(v, gt_file)
+        print(gt2pred)
         matches[matches_key] = {}
         matches[matches_key]['gt'] = gt2pred
         matches[matches_key]['pred'] = pred2gt
