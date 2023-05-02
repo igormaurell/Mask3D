@@ -8,4 +8,4 @@ losses:
 num_points: ${matcher.num_points}
 oversample_ratio: 3.0
 importance_sample_ratio: 0.75
-class_weights: [1.38, 0.44618, 29.6]
+class_weights: [0.6866, 17.3144]

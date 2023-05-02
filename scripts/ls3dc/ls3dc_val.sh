@@ -8,14 +8,14 @@ CURR_SIZE=6
 
 # TRAIN
 python main_instance_segmentation.py \
-general.experiment_name="validation_ls3dc" \
-general.project_name="ls3dc" \
+general.experiment_name="validation_ls3dc_reborn_n_04" \
+general.project_name="ls3dc_reborn" \
 data=primitives \
 data/datasets=ls3dc \
 general.num_targets=3 \
 data.num_labels=3 \
-data.voxel_size=0.08 \
-data.num_workers=20 \
+data.voxel_size=0.04 \
+data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
 general.reps_per_epoch=1 \
@@ -26,12 +26,12 @@ model.config.backbone._target_=models.Res16UNet18B \
 # TEST
 python main_instance_segmentation.py \
 general.experiment_name="validation_ls3dc_query_${CURR_QUERY}_topk_${CURR_TOPK}_dbscan_${CURR_DBSCAN}_size_${CURR_SIZE}" \
-general.project_name="ls3dc_eval" \
+general.project_name="ls3dc_reborn_eval" \
 data/datasets=ls3dc \
 data=primitives \
 general.num_targets=3 \
 data.num_labels=3 \
-data.voxel_size=0.08 \
+data.voxel_size=0.04 \
 data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
