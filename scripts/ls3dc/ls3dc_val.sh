@@ -8,7 +8,7 @@ CURR_SIZE=6
 
 # TRAIN
 python main_instance_segmentation.py \
-general.experiment_name="validation_ls3dc_reborn_n_04" \
+general.experiment_name="validation_ls3dc_reborn_n_weights_04" \
 general.project_name="ls3dc_reborn" \
 data=primitives \
 data/datasets=ls3dc \
