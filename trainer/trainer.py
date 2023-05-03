@@ -430,9 +430,7 @@ class InstanceSegmentation(pl.LightningModule):
             output = self.forward(data,
                                   point2segment=[target[i]['point2segment'] for i in range(len(target))],
                                   raw_coordinates=raw_coordinates,
-                                  is_eval=True)
-            #print('output:', output.keys())
-            
+                                  is_eval=True)            
         except RuntimeError as run_err:
             print(run_err)
             if 'only a single point gives nans in cross-attention' == run_err.args[0]:
