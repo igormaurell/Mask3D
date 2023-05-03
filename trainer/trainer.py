@@ -24,7 +24,73 @@ import random
 import colorsys
 from typing import List, Tuple
 import functools
+import pickle
 
+def rank_zero_only(is_callback=False):
+    def inner_func(func):
+        def wrapper_func(*args, **kwargs):
+            if is_callback:
+                trainer = args[1]
+            else:
+                trainer = args[0].trainer
+            if trainer.strategy.is_global_zero:
+                func(*args, **kwargs)
+        return wrapper_func
+    return inner_func
+
+def collect_from_gpus(dataset='train'):
+    def inner_func(func):
+        def wrapper_func(*args, **kwargs):
+            obj = args[0]
+            data = args[1]
+
+            world_size = obj.trainer.world_size
+
+            data_tensor = torch.tensor(bytearray(pickle.dumps(data)), dtype=torch.uint8, device='cuda')
+
+            shape_tensor = torch.tensor(data_tensor.shape, device='cuda')
+
+            shape_list = [shape_tensor.clone() for _ in range(world_size)]
+
+            torch.distributed.all_gather(shape_list, shape_tensor)
+
+            shape_max = torch.tensor(shape_list).max()
+
+            data_send = torch.zeros(shape_max, dtype=torch.uint8, device='cuda')
+
+            data_send[:shape_tensor[0]] = data_tensor
+
+            data_recv_list = [
+                data_tensor.new_zeros(shape_max) for _ in range(world_size)
+            ]
+                    
+            torch.distributed.all_gather(data_recv_list, data_send)
+
+            if obj.trainer.strategy.is_global_zero:
+                data_list = []
+                for recv, shape in zip(data_recv_list, shape_list):
+                    data_list.append(
+                        pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
+                            
+                ordered_results = []
+                for res in zip(*data_list):
+                    ordered_results.extend(list(res))
+                
+                if dataset == 'test':
+                    size = len(obj.test_dataset)
+                elif dataset == 'validation':
+                    size = len(obj.validation_dataset)
+                else:
+                    size = len(obj.train_dataset)
+
+                ordered_results = ordered_results[:size]
+                    
+                args_list = list(args)
+                args_list[1] = ordered_results
+
+                func(*args_list, **kwargs)
+        return wrapper_func
+    return inner_func
 
 @functools.lru_cache(20)
 def get_evenly_distributed_colors(count: int) -> List[Tuple[np.uint8, np.uint8, np.uint8]]:
@@ -34,6 +100,7 @@ def get_evenly_distributed_colors(count: int) -> List[Tuple[np.uint8, np.uint8, 
     return list(map(lambda x: (np.array(colorsys.hsv_to_rgb(*x))*255).astype(np.uint8), HSV_tuples))
 
 class RegularCheckpointing(pl.Callback):
+    @rank_zero_only(is_callback=True)
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
         general = pl_module.config.general
         trainer.save_checkpoint(f"{general.save_dir}/last-epoch.ckpt")
@@ -127,13 +194,13 @@ class InstanceSegmentation(pl.LightningModule):
         try:
             losses = self.criterion(output, target, mask_type=self.mask_type)
         except ValueError as val_err:
-            print(f"ValueError: {val_err}")
-            print(f"data shape: {data.shape}")
-            print(f"data feat shape:  {data.features.shape}")
-            print(f"data feat nans:   {data.features.isnan().sum()}")
-            print(f"output: {output}")
-            print(f"target: {target}")
-            print(f"filenames: {file_names}")
+            #print(f"ValueError: {val_err}")
+            #print(f"data shape: {data.shape}")
+            #print(f"data feat shape:  {data.features.shape}")
+            #print(f"data feat nans:   {data.features.isnan().sum()}")
+            #print(f"output: {output}")
+            #print(f"target: {target}")
+            #print(f"filenames: {file_names}")
             raise val_err
 
         for k in list(losses.keys()):
@@ -153,7 +220,7 @@ class InstanceSegmentation(pl.LightningModule):
         logs['train_mean_loss_dice'] = statistics.mean(
             [item for item in [v for k, v in logs.items() if "loss_dice" in k]])
 
-        self.log_dict(logs)
+        self.log_dict(logs, sync_dist=True)
         return sum(losses.values())
 
     def validation_step(self, batch, batch_idx):
@@ -179,14 +246,20 @@ class InstanceSegmentation(pl.LightningModule):
                     # reduce the export size a bit. I guess no performance difference
                     np.savetxt(f"{pred_mask_path}/{file_name}_{real_id}.txt", mask, fmt="%d")
                     fout.write(f"pred_mask/{file_name}_{real_id}.txt {pred_class} {score}\n")
-
+    
+    @collect_from_gpus(dataset='train')
     def training_epoch_end(self, outputs):
         train_loss = sum([out["loss"].cpu().item() for out in outputs]) / len(outputs)
         results = {"train_loss_mean": train_loss}
-        self.log_dict(results)
+        self.log_dict(results, sync_dist=False)
 
+    @collect_from_gpus(dataset='validation')
     def validation_epoch_end(self, outputs):
-        self.test_epoch_end(outputs)
+        self.val_test_epoch_end(outputs)
+
+    @collect_from_gpus(dataset='test')
+    def test_epoch_end(self, outputs):
+        self.val_test_epoch_end(outputs)
 
     def save_visualizations(self, target_full, full_res_coords,
                             sorted_masks, sort_classes, file_name, original_colors, original_normals,
@@ -348,7 +421,7 @@ class InstanceSegmentation(pl.LightningModule):
             output = self.forward(data,
                                   point2segment=[target[i]['point2segment'] for i in range(len(target))],
                                   raw_coordinates=raw_coordinates,
-                                  is_eval=True)
+                                  is_eval=True)            
         except RuntimeError as run_err:
             print(run_err)
             if 'only a single point gives nans in cross-attention' == run_err.args[0]:
@@ -359,7 +432,6 @@ class InstanceSegmentation(pl.LightningModule):
         if self.config.data.test_mode != "test":
             if self.config.trainer.deterministic:
                 torch.use_deterministic_algorithms(False)
-
             try:
                 losses = self.criterion(output, target,
                                         mask_type=self.mask_type)
@@ -814,7 +886,7 @@ class InstanceSegmentation(pl.LightningModule):
             ap_results[f"{log_prefix}_mean_ap_50"] = 0.
             ap_results[f"{log_prefix}_mean_ap_25"] = 0.
 
-        self.log_dict(ap_results)
+        self.log_dict(ap_results, sync_dist=False)
 
         if not self.config.general.export:
             shutil.rmtree(base_path)
@@ -829,7 +901,7 @@ class InstanceSegmentation(pl.LightningModule):
         self.bbox_preds = dict()
         self.bbox_gt = dict()
 
-    def test_epoch_end(self, outputs):
+    def val_test_epoch_end(self, outputs):
         if self.config.general.export:
             return
 
@@ -846,7 +918,7 @@ class InstanceSegmentation(pl.LightningModule):
         dd['val_mean_loss_mask'] = statistics.mean([item for item in [v for k,v in dd.items() if "loss_mask" in k]])
         dd['val_mean_loss_dice'] = statistics.mean([item for item in [v for k,v in dd.items() if "loss_dice" in k]])
 
-        self.log_dict(dd)
+        self.log_dict(dd, sync_dist=False)
 
     def configure_optimizers(self):
         optimizer = hydra.utils.instantiate(

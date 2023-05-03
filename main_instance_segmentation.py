@@ -23,9 +23,10 @@ def get_parameters(cfg: DictConfig):
     # parsing input parameters
     seed_everything(cfg.general.seed)
 
+
     # getting basic configuration
-    if cfg.general.get("gpus", None) is None:
-        cfg.general.gpus = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if cfg.trainer.get("devices", None) is None:
+        cfg.trainer.devices = -1
     loggers = []
 
     # cfg.general.experiment_id = "0" # str(Repo("./").commit())[:8]
@@ -36,8 +37,9 @@ def get_parameters(cfg: DictConfig):
     # cfg.general.version = md5(str(params).encode("utf-8")).hexdigest()[:8] + unique_id
 
     if not os.path.exists(cfg.general.save_dir):
-        os.makedirs(cfg.general.save_dir)
-    else:
+        os.makedirs(cfg.general.save_dir, exist_ok=True)
+        cfg['trainer']['resume_from_checkpoint'] = None
+    elif os.path.exists(f"{cfg.general.save_dir}/last-epoch.ckpt"):
         print("EXPERIMENT ALREADY EXIST")
         cfg['trainer']['resume_from_checkpoint'] = f"{cfg.general.save_dir}/last-epoch.ckpt"
 
@@ -53,6 +55,8 @@ def get_parameters(cfg: DictConfig):
         cfg, model = load_backbone_checkpoint_with_missing_or_exsessive_keys(cfg, model)
     if cfg.general.checkpoint is not None:
         cfg, model = load_checkpoint_with_missing_or_exsessive_keys(cfg, model)
+    
+    model.prepare_data()
 
     logger.info(flatten_dict(OmegaConf.to_container(cfg, resolve=True)))
     return cfg, model, loggers
@@ -70,7 +74,6 @@ def train(cfg: DictConfig):
 
     runner = Trainer(
         logger=loggers,
-        gpus=cfg.general.gpus,
         callbacks=callbacks,
         weights_save_path=str(cfg.general.save_dir),
         **cfg.trainer,
@@ -84,7 +87,6 @@ def test(cfg: DictConfig):
     os.chdir(hydra.utils.get_original_cwd())
     cfg, model, loggers = get_parameters(cfg)
     runner = Trainer(
-        gpus=cfg.general.gpus,
         logger=loggers,
         weights_save_path=str(cfg.general.save_dir),
         **cfg.trainer
