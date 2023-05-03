@@ -6,7 +6,6 @@ import hydra
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from trainer.trainer import InstanceSegmentation, RegularCheckpointing
-import torch as t
 from pytorch_lightning.callbacks import ModelCheckpoint
 from utils.utils import (
     flatten_dict,
@@ -27,7 +26,7 @@ def get_parameters(cfg: DictConfig):
 
     # getting basic configuration
     if cfg.trainer.get("devices", None) is None:
-        cfg.trainer.devices = t.cuda.device_count()
+        cfg.trainer.devices = -1
     loggers = []
 
     # cfg.general.experiment_id = "0" # str(Repo("./").commit())[:8]
