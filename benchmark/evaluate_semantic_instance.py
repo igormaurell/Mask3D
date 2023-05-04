@@ -363,20 +363,19 @@ def print_results(avgs):
     print("")
 
 
-def write_result_file(avgs, filename):
-    _SPLITTER = ','
-    with open(filename, 'w') as f:
-        f.write(_SPLITTER.join(['class', 'class id', 'ap', 'ap50', 'ap25']) + '\n')
-        for i in range(len(VALID_CLASS_IDS)):
-            class_name = CLASS_LABELS[i]
-            class_id = VALID_CLASS_IDS[i]
-            ap = avgs["classes"][class_name]["ap"]
-            ap50 = avgs["classes"][class_name]["ap50%"]
-            ap25 = avgs["classes"][class_name]["ap25%"]
-            f.write(_SPLITTER.join([str(x) for x in [class_name, class_id, ap, ap50, ap25]]) + '\n')
-
-
-def evaluate(preds: dict, gt_path: str, output_file: str, dataset: str = "scannet"):
+def mount_ap_dict(avgs, log_prefix):
+    ap_results = {}
+    for i in range(len(VALID_CLASS_IDS)):
+        class_name = CLASS_LABELS[i]
+        ap = avgs["classes"][class_name]["ap"]
+        ap50 = avgs["classes"][class_name]["ap50%"]
+        ap25 = avgs["classes"][class_name]["ap25%"]
+        ap_results[f"{log_prefix}_{class_name}_val_ap"] = float(ap)
+        ap_results[f"{log_prefix}_{class_name}_val_ap_50"] = float(ap50)
+        ap_results[f"{log_prefix}_{class_name}_val_ap_25"] = float(ap25)
+    return ap_results
+    
+def evaluate(preds: dict, gt_path: str, log_prefix: str, dataset: str = "scannet"):
     global CLASS_LABELS
     global VALID_CLASS_IDS
     global ID_TO_LABEL
@@ -595,7 +594,7 @@ def evaluate(preds: dict, gt_path: str, output_file: str, dataset: str = "scanne
 
     # print
     print_results(avgs)
-    write_result_file(avgs, output_file)
+    ap_results = mount_ap_dict(avgs, log_prefix)
 
     if dataset == "s3dis":
         MUCov = np.zeros(NUM_CLASSES)
@@ -625,8 +624,10 @@ def evaluate(preds: dict, gt_path: str, output_file: str, dataset: str = "scanne
             LOG_FOUT.flush()
             print(out_str)
         '''
-
-        return np.mean(precision), np.mean(recall)
+        ap_results[f"{log_prefix}_mean_precision"] = np.mean(precision)
+        ap_results[f"{log_prefix}_mean_recall"] = np.mean(recall)
+       
+    return ap_results
 
 # TODO: remove this
 #import pandas as pd
