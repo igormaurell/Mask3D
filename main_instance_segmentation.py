@@ -37,6 +37,7 @@ def get_parameters(cfg: DictConfig):
     # cfg.general.version = md5(str(params).encode("utf-8")).hexdigest()[:8] + unique_id
 
     if not os.path.exists(cfg.general.save_dir):
+        print(cfg.general.save_dir)
         os.makedirs(cfg.general.save_dir, exist_ok=True)
         cfg['trainer']['resume_from_checkpoint'] = None
     elif os.path.exists(f"{cfg.general.save_dir}/last-epoch.ckpt"):

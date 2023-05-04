@@ -24,73 +24,6 @@ import random
 import colorsys
 from typing import List, Tuple
 import functools
-import pickle
-
-def rank_zero_only(is_callback=False):
-    def inner_func(func):
-        def wrapper_func(*args, **kwargs):
-            if is_callback:
-                trainer = args[1]
-            else:
-                trainer = args[0].trainer
-            if trainer.strategy.is_global_zero:
-                func(*args, **kwargs)
-        return wrapper_func
-    return inner_func
-
-def collect_from_gpus(dataset='train'):
-    def inner_func(func):
-        def wrapper_func(*args, **kwargs):
-            obj = args[0]
-            data = args[1]
-
-            world_size = obj.trainer.world_size
-
-            data_tensor = torch.tensor(bytearray(pickle.dumps(data)), dtype=torch.uint8, device='cuda')
-
-            shape_tensor = torch.tensor(data_tensor.shape, device='cuda')
-
-            shape_list = [shape_tensor.clone() for _ in range(world_size)]
-
-            torch.distributed.all_gather(shape_list, shape_tensor)
-
-            shape_max = torch.tensor(shape_list).max()
-
-            data_send = torch.zeros(shape_max, dtype=torch.uint8, device='cuda')
-
-            data_send[:shape_tensor[0]] = data_tensor
-
-            data_recv_list = [
-                data_tensor.new_zeros(shape_max) for _ in range(world_size)
-            ]
-                    
-            torch.distributed.all_gather(data_recv_list, data_send)
-
-            if obj.trainer.strategy.is_global_zero:
-                data_list = []
-                for recv, shape in zip(data_recv_list, shape_list):
-                    data_list.append(
-                        pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
-                            
-                ordered_results = []
-                for res in zip(*data_list):
-                    ordered_results.extend(list(res))
-                
-                if dataset == 'test':
-                    size = len(obj.test_dataset)
-                elif dataset == 'validation':
-                    size = len(obj.validation_dataset)
-                else:
-                    size = len(obj.train_dataset)
-
-                ordered_results = ordered_results[:size]
-                    
-                args_list = list(args)
-                args_list[1] = ordered_results
-
-                func(*args_list, **kwargs)
-        return wrapper_func
-    return inner_func
 
 @functools.lru_cache(20)
 def get_evenly_distributed_colors(count: int) -> List[Tuple[np.uint8, np.uint8, np.uint8]]:
@@ -100,7 +33,7 @@ def get_evenly_distributed_colors(count: int) -> List[Tuple[np.uint8, np.uint8, 
     return list(map(lambda x: (np.array(colorsys.hsv_to_rgb(*x))*255).astype(np.uint8), HSV_tuples))
 
 class RegularCheckpointing(pl.Callback):
-    @rank_zero_only(is_callback=True)
+    @pl.utilities.rank_zero.rank_zero_only
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
         general = pl_module.config.general
         trainer.save_checkpoint(f"{general.save_dir}/last-epoch.ckpt")
@@ -246,20 +179,14 @@ class InstanceSegmentation(pl.LightningModule):
                     # reduce the export size a bit. I guess no performance difference
                     np.savetxt(f"{pred_mask_path}/{file_name}_{real_id}.txt", mask, fmt="%d")
                     fout.write(f"pred_mask/{file_name}_{real_id}.txt {pred_class} {score}\n")
-    
-    @collect_from_gpus(dataset='train')
+
     def training_epoch_end(self, outputs):
         train_loss = sum([out["loss"].cpu().item() for out in outputs]) / len(outputs)
         results = {"train_loss_mean": train_loss}
-        self.log_dict(results, sync_dist=False)
+        self.log_dict(results, on_epoch=True, sync_dist=True)
 
-    @collect_from_gpus(dataset='validation')
     def validation_epoch_end(self, outputs):
-        self.val_test_epoch_end(outputs)
-
-    @collect_from_gpus(dataset='test')
-    def test_epoch_end(self, outputs):
-        self.val_test_epoch_end(outputs)
+        self.test_epoch_end(outputs)
 
     def save_visualizations(self, target_full, full_res_coords,
                             sorted_masks, sort_classes, file_name, original_colors, original_normals,
@@ -797,22 +724,12 @@ class InstanceSegmentation(pl.LightningModule):
         for class_id in box_ap_25[-1].keys():
             class_name = self.train_dataset.label_info[class_id]['name']
             ap_results[f"{log_prefix}_{class_name}_val_box_ap_25"] = box_ap_25[-1][class_id]
-
-        root_path = f"eval_output"
-        base_path = f"{root_path}/instance_evaluation_{self.config.general.experiment_name}_{self.current_epoch}"
-
+            
         if self.validation_dataset.dataset_name in ["scannet", "stpls3d", "scannet200", "ls3dc"]:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/{self.validation_dataset.mode}"
             #print(gt_data_path)
         else:
             gt_data_path = f"{self.validation_dataset.data_dir[0]}/instance_gt/Area_{self.config.general.area}"
-
-        pred_path = f"{base_path}/tmp_output.txt"
-
-        log_prefix = f"val"
-
-        if not os.path.exists(base_path):
-            os.makedirs(base_path)
 
         try:
             if self.validation_dataset.dataset_name == "s3dis":
@@ -823,9 +740,6 @@ class InstanceSegmentation(pl.LightningModule):
                         'pred_masks': self.preds[key]['pred_masks'],
                         'pred_scores': self.preds[key]['pred_scores']
                     }
-                mprec, mrec = evaluate(new_preds, gt_data_path, pred_path, dataset="s3dis")
-                ap_results[f"{log_prefix}_mean_precision"] = mprec
-                ap_results[f"{log_prefix}_mean_recall"] = mrec
             elif self.validation_dataset.dataset_name == "stpls3d":
                 new_preds = {}
                 for key in self.preds.keys():
@@ -834,45 +748,10 @@ class InstanceSegmentation(pl.LightningModule):
                         'pred_masks': self.preds[key]['pred_masks'],
                         'pred_scores': self.preds[key]['pred_scores']
                     }
-
-                evaluate(new_preds, gt_data_path, pred_path, dataset="stpls3d")
-            elif self.validation_dataset.dataset_name == "ls3dc":
-                new_preds = {}
-                for key in self.preds.keys():
-                    new_preds[key.replace(".txt", "")] = {
-                        'pred_classes': self.preds[key]['pred_classes'],
-                        'pred_masks': self.preds[key]['pred_masks'],
-                        'pred_scores': self.preds[key]['pred_scores']
-                    }
-
-                evaluate(new_preds, gt_data_path, pred_path, dataset="ls3dc")
             else:
-                evaluate(self.preds, gt_data_path, pred_path, dataset=self.validation_dataset.dataset_name)
-            with open(pred_path, "r") as fin:
-                for line_id, line in enumerate(fin):
-                    if line_id == 0:
-                        # ignore header
-                        continue
-                    class_name, _, ap, ap_50, ap_25 = line.strip().split(",")
-
-                    if self.validation_dataset.dataset_name == "scannet200":
-                        if class_name in VALID_CLASS_IDS_200_VALIDATION:
-                            ap_results[f"{log_prefix}_{class_name}_val_ap"] = float(ap)
-                            ap_results[f"{log_prefix}_{class_name}_val_ap_50"] = float(ap_50)
-                            ap_results[f"{log_prefix}_{class_name}_val_ap_25"] = float(ap_25)
-
-                            if class_name in HEAD_CATS_SCANNET_200:
-                                head_results.append(np.array((float(ap), float(ap_50), float(ap_25))))
-                            elif class_name in COMMON_CATS_SCANNET_200:
-                                common_results.append(np.array((float(ap), float(ap_50), float(ap_25))))
-                            elif class_name in TAIL_CATS_SCANNET_200:
-                                tail_results.append(np.array((float(ap), float(ap_50), float(ap_25))))
-                            else:
-                                assert(False, 'class not known!')
-                    else:
-                        ap_results[f"{log_prefix}_{class_name}_val_ap"] = float(ap)
-                        ap_results[f"{log_prefix}_{class_name}_val_ap_50"] = float(ap_50)
-                        ap_results[f"{log_prefix}_{class_name}_val_ap_25"] = float(ap_25)
+                new_preds = self.preds
+            
+            ap_results.update(evaluate(new_preds, gt_data_path, log_prefix, dataset=self.validation_dataset.dataset_name))
 
             if self.validation_dataset.dataset_name == "scannet200":
                 head_results = np.stack(head_results)
@@ -912,16 +791,14 @@ class InstanceSegmentation(pl.LightningModule):
                 ap_results[f"{log_prefix}_mean_ap_25"] = mean_ap_25
 
                 ap_results = {key: 0. if math.isnan(score) else score for key, score in ap_results.items()}
-        except (IndexError, OSError) as e:
+        except (IndexError) as e:
             print("NO SCORES!!!")
             ap_results[f"{log_prefix}_mean_ap"] = 0.
             ap_results[f"{log_prefix}_mean_ap_50"] = 0.
             ap_results[f"{log_prefix}_mean_ap_25"] = 0.
 
-        self.log_dict(ap_results, sync_dist=False)
-
-        if not self.config.general.export:
-            shutil.rmtree(base_path)
+        if not self.trainer.sanity_checking:
+            self.log_dict(ap_results, sync_dist=True)
 
         del self.preds
         del self.bbox_preds
@@ -932,8 +809,8 @@ class InstanceSegmentation(pl.LightningModule):
         self.preds = dict()
         self.bbox_preds = dict()
         self.bbox_gt = dict()
-
-    def val_test_epoch_end(self, outputs):
+    
+    def test_epoch_end(self, outputs):
         if self.config.general.export:
             return
 
@@ -950,7 +827,7 @@ class InstanceSegmentation(pl.LightningModule):
         dd['val_mean_loss_mask'] = statistics.mean([item for item in [v for k,v in dd.items() if "loss_mask" in k]])
         dd['val_mean_loss_dice'] = statistics.mean([item for item in [v for k,v in dd.items() if "loss_dice" in k]])
 
-        self.log_dict(dd, sync_dist=False)
+        self.log_dict(dd, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = hydra.utils.instantiate(
