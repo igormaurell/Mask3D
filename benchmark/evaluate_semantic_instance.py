@@ -392,8 +392,8 @@ def evaluate(preds: dict, gt_path: str, log_prefix: str, dataset: str = "scannet
 
         opt['min_region_sizes'] = np.array([4])
 
-        CLASS_LABELS = ['plane', 'cylinder']
-        VALID_CLASS_IDS = np.array([1, 2])
+        CLASS_LABELS = ['plane', 'cylinder', 'cone', 'sphere']
+        VALID_CLASS_IDS = np.array([1, 2, 3, 4])
 
         ID_TO_LABEL = {}
         LABEL_TO_ID = {}

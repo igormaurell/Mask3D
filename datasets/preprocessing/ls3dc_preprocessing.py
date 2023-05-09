@@ -1,5 +1,4 @@
 import re
-import os
 import numpy as np
 from fire import Fire
 from natsort import natsorted
@@ -35,13 +34,17 @@ class LS3DCPreprocessing(BasePreprocessing):
         self.class_map = {
             'none': 0,
             'plane': 1,
-            'cylinder': 2
+            'cylinder': 2,
+            'cone': 3,
+            'sphere': 4
         }
 
         self.color_map = [
             [255, 255, 255], #None
-            [255, 0, 0],   # Plane
-            [0, 0, 255]]   # Cylinder
+            [255, 0, 0],     # Plane
+            [0, 0, 255],     # Cylinder
+            [0, 255, 0],     # Cone
+            [255,255,0]]     # Sphere   
    
 
         self.create_label_database()
