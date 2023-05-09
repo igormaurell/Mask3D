@@ -64,7 +64,7 @@ defaults:
   - trainer: trainer600
   - callbacks: callbacks_instance_segmentation
   - matcher: hungarian_matcher
-  - loss: set_criterion_custom_weights_2
+  - loss: set_criterion
 
 hydra:
   run:

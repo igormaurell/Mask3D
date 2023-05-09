@@ -9,12 +9,12 @@ CURR_SIZE=6
 # TRAIN
 python main_instance_segmentation.py \
 general.experiment_name="validation_ls3dc_reborn_n_weights_04" \
-general.project_name="ls3dc_reborn" \
+general.project_name="ls3dc_reborn_4t" \
 data=primitives \
 data/datasets=ls3dc \
-general.num_targets=3 \
-data.num_labels=3 \
-data.voxel_size=0.04 \
+general.num_targets=5 \
+data.num_labels=5 \
+data.voxel_size=0.02 \
 data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
@@ -25,13 +25,13 @@ model.config.backbone._target_=models.Res16UNet18B \
 
 # TEST
 python main_instance_segmentation.py \
-general.experiment_name="validation_ls3dc_query_${CURR_QUERY}_topk_${CURR_TOPK}_dbscan_${CURR_DBSCAN}_size_${CURR_SIZE}" \
-general.project_name="ls3dc_reborn_eval" \
+general.experiment_name="validation_ls3dc_reborn_4t_query_${CURR_QUERY}_topk_${CURR_TOPK}_dbscan_${CURR_DBSCAN}_size_${CURR_SIZE}" \
+general.project_name="ls3dc_reborn_4t_eval" \
 data/datasets=ls3dc \
 data=primitives \
-general.num_targets=3 \
-data.num_labels=3 \
-data.voxel_size=0.04 \
+general.num_targets=5 \
+data.num_labels=5 \
+data.voxel_size=0.02 \
 data.num_workers=10 \
 data.cache_data=true \
 data.cropping_v1=false \
@@ -40,7 +40,7 @@ model.num_queries=${CURR_QUERY} \
 general.on_crops=false \
 model.config.backbone._target_=models.Res16UNet18B \
 general.train_mode=false \
-general.checkpoint="checkpoints/ls3dc/ls3dc_val.ckpt" \
+general.checkpoint="saved/ls3dc_reborn_4t/last-epoch.ckpt" \
 general.topk_per_image=${CURR_TOPK} \
 general.use_dbscan=true \
 general.dbscan_eps=${CURR_DBSCAN}
